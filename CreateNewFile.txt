@@ -1,0 +1,4 @@
+Dim partDoc As PartDocument = ThisApplication.ActiveDocument
+Dim model As String = iProperties.Value("Custom", "MODEL")
+Dim path As String = "C:\Blog\Assets\"
+partDoc.SaveAs(path & model & ".ipt", True)

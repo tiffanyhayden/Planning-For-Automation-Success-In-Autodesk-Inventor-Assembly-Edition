@@ -1,0 +1,138 @@
+﻿
+Sub Main()
+	'*********************************************************************************
+	' DOCUMENT
+	'*********************************************************************************
+	Dim asmDoc As AssemblyDocument = ThisApplication.ActiveDocument
+	Dim asmDef As AssemblyComponentDefinition = asmDoc.ComponentDefinition	
+
+	'*********************************************************************************
+	' iProperties
+	'*********************************************************************************
+	Dim oal As String = ReturnPropertyValue(asmDoc, "OAL")
+	Dim gateLocation As String = ReturnPropertyValue(asmDoc, "GATE LOCATION")
+	Dim height As String = ReturnPropertyValue(asmDoc, "HEIGHT")
+	
+	'*********************************************************************************
+	' PUSH iProperties INTO PARAMETERS
+	'*********************************************************************************
+	If oal <> "" Then Parameter.Param("OAL").Expression = oal
+	If gateLocation <> "" Then Parameter.Param("GATE_LOCATION").Expression = gateLocation	
+	If height <> "" Then Parameter.Param("HEIGHT").Expression = height	
+		
+	'*********************************************************************************
+	' UPDATE DOCUMENT TO MAKE PARTS IN ASSEMBLY IN CORRECT LOCATION PRIOR TO MEASURING
+	'*********************************************************************************		
+	asmDoc.Update2
+
+	'*********************************************************************************
+	' TAKE MEASUREMENTS FOR DISTANCE BETWEEN PLANES TO ACCURATELY CALCULATE
+	' PATTERN QTY
+	'*********************************************************************************
+	Dim patternLength_IN As Double = Measure.MinimumDistance("PLANE IN", "PLANE GATE IN")
+	Dim patternLength_OUT As Double = Measure.MinimumDistance("PLANE GATE OUT", "PLANE OUT OFFSET")
+	
+	
+	'*********************************************************************************
+	' PATTERN CALCULATIONS
+	'*********************************************************************************
+	Dim patternOffset_IN As Double = Parameter("PAT_IN_OFFSET")
+	Dim patternQty_IN As Double = Ceiling(patternLength_IN/patternOffset_IN)
+	
+	Dim patternOffset_Out As Double = Parameter("PAT_OUT_OFFSET")
+	Dim patternQty_Out As Double = Ceiling(patternLength_OUT / patternOffset_Out)
+	
+	Parameter.Param("PAT_IN_QTY").Expression = CStr(patternQty_IN)
+	Parameter.Param("PAT_OUT_QTY").Expression = CStr(patternQty_Out)
+	
+	'*********************************************************************************
+	' UPDATE ASSEMBLY SO THAT THE PATTERNS REFLECT THEIR CURRENT STATE THIS WILL HELP
+	' WITH ADDING AND REMOVING PARTICIPANTS LATER IN THE CODE. 
+	'*********************************************************************************
+	asmDoc.Update2
+
+	'*********************************************************************************
+	' ADJUSTING ASSEMBLY EXTRUSION CUTS - ADD OR REMOVE PARTICIPANTS AS NEEDED
+	' WHEN PARAMETERS SHRINK OR GROW PATTERNS
+	'*********************************************************************************
+	AdjustExtrusionParticipants(asmDoc, "EXT GATE", "PAT IN", "COMP IN")
+	AdjustExtrusionParticipants(asmDoc, "EXT OUT", "PAT OUT", "COMP GATE")
+	
+	
+	iLogicVb.UpdateWhenDone = True
+	
+
+End Sub
+
+
+Sub AdjustExtrusionParticipants(invDoc As AssemblyDocument, extName As String, patName As String, defaultName As String)
+	
+	'*********************************************************************************
+	' THIS SUB ADDS THE LAST PARTICIPANT FROM A PATTERN TO AN ASSEMBLY EXTRUSION
+	' ALONG WITH REMOVING PARTICIPANTS THAT ARE NOT THE LAST PARTICIPANT AND ALSO 
+	' NOT THE DEFAULT PARTICIPANT. 
+	'*********************************************************************************
+	
+	Dim asmDef As AssemblyComponentDefinition = invDoc.ComponentDefinition 
+	Dim extFeature As ExtrudeFeature = Feature.InventorFeature(extName)
+	Dim pat As OccurrencePattern = asmDef.OccurrencePatterns.Item(patName)
+	Dim extOcc As ComponentOccurrence
+	Dim patElement As OccurrencePatternElement 
+	Dim patOcc As ComponentOccurrence
+	
+	
+	For Each extOcc In extFeature.Participants
+		For Each patElement In pat.OccurrencePatternElements
+			For Each patOcc In patElement.Occurrences
+				If patOcc.Name <> defaultName Then 
+					If patOcc.PatternElement.Index < pat.OccurrencePatternElements.Count Then 
+						If patOcc Is extOcc Then 
+							extFeature.RemoveParticipant(patOcc)
+						end if 
+					ElseIf patOcc.PatternElement.Index = pat.OccurrencePatternElements.Count Then 
+						If patOcc IsNot extOcc Then 
+							extFeature.AddParticipant(patOcc)
+						End If 
+					End If 
+				End If 
+			Next 
+		Next
+	Next 
+	
+End Sub 
+
+
+Function ReturnPropertyValue(invDoc As Document, invPropName As String) As String
+
+    If invDoc Is Nothing Then Exit Function
+
+    Dim invSumProperties As PropertySet = invDoc.PropertySets.Item("Inventor Summary Information")
+    Dim invDTProperties As PropertySet = invDoc.PropertySets.Item("Design Tracking Properties")
+    Dim invDSIProperties As PropertySet = invDoc.PropertySets.Item("Inventor Document Summary Information")
+    Dim invCustomPropertySet As PropertySet = invDoc.PropertySets.Item("Inventor User Defined Properties")
+    Dim invProp As Inventor.Property
+    
+    For Each invProp In invSumProperties
+        If invProp.Name = invPropName Then
+            Return invProp.Value
+        End If
+    Next
+    For Each invProp In invDTProperties
+        If invProp.Name = invPropName Then
+            Return invProp.Value
+        End If
+    Next
+    For Each invProp In invDSIProperties
+        If invProp.Name = invPropName Then
+            Return invProp.Value
+        End If
+    Next
+    For Each invProp In invCustomPropertySet
+        If invProp.Name = invPropName Then
+            Return invProp.Value
+        End If
+    Next
+	
+	Return ""
+	
+End Function
